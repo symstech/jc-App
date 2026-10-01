@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "jc-App",
-    "slug": "jc-App",
+    "name": "Calender_Widget",
+    "slug": "Calender_Widget",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "jcapp",
+    "scheme": "calenderwidget",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
@@ -17,7 +17,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.vani2003.Calender_Widget"
     },
     "web": {
       "output": "static",
@@ -32,7 +33,29 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+    [
+  "react-native-android-widget",
+  {
+    "widgets": [
+      {
+        "name": "CalendarWidget",
+        "label": "Month Calendar",
+        "minWidth": "250dp",
+        "minHeight": "360dp",
+        "targetCellWidth": 4,
+        "targetCellHeight": 5,
+        "maxResizeWidth": "500dp",
+        "maxResizeHeight": "700dp",
+        "resizeMode": "horizontal|vertical",
+        "widgetFeatures": "reconfigurable",
+        "description": "Monthly calendar grid widget",
+        "updatePeriodMillis": 1800000
+      }
+    ]
+  }
+],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

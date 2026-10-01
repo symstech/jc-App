@@ -1,98 +1,196 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { requestWidgetUpdate } from 'react-native-android-widget';
+import { CalendarWidget } from '../widgets/calenderwidget';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+const API_URL = 'https://dsdev.symstech.com/api/dumyDataForAPI/Widget';
+const CACHE_KEY = 'CALENDAR_WIDGET_DATA';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+// Cross-platform storage helper (Web par localStorage, Mobile par SecureStore)
+const Storage = {
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') {
+      return typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') localStorage.setItem(key, value);
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  },
+};
 
 export default function HomeScreen() {
+  const [loading, setLoading] = useState<boolean>(false);
+  const [taskCount, setTaskCount] = useState<number>(0);
+
+  const normalizeData = (rawList: any[]) => {
+    return rawList.map((item: any, index: number) => {
+      const type = (item.type || item.department || 'general').toLowerCase();
+      let color = item.color;
+      if (!color) {
+        if (type.includes('hr')) color = '#10b981';
+        else if (type.includes('market')) color = '#3b82f6';
+        else color = '#f59e0b';
+      }
+
+      return {
+        id: item.id || index + 1,
+        title: item.title || item.task_name || item.name || `Task ${index + 1}`,
+        date: item.date || item.task_date || item.due_date || '2026-09-05',
+        type,
+        color,
+      };
+    });
+  };
+
+  const initializeWidgetData = async () => {
+    try {
+      const cached = await Storage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setTaskCount(parsed.length);
+        if (Platform.OS === 'android') {
+          await requestWidgetUpdate({
+            widgetName: 'CalendarWidget',
+            renderWidget: () => <CalendarWidget activities={parsed} />,
+          });
+        }
+      } else {
+        await fetchAndSyncWidget();
+      }
+    } catch (err) {
+      console.error('Storage Read Error:', err);
+      await fetchAndSyncWidget();
+    }
+  };
+
+  const fetchAndSyncWidget = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const responseText = await response.text();
+      let json: any;
+      try {
+        json = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Server returned non-JSON status ${response.status}`);
+      }
+
+      const rawList = Array.isArray(json) ? json : json?.data || [];
+      const normalized = normalizeData(rawList);
+
+      await Storage.setItem(CACHE_KEY, JSON.stringify(normalized));
+      setTaskCount(normalized.length);
+
+      // Sirf Android par Widget update dispatch hoga
+      if (Platform.OS === 'android') {
+        await requestWidgetUpdate({
+          widgetName: 'CalendarWidget',
+          renderWidget: () => <CalendarWidget activities={normalized} />,
+        });
+      }
+
+      Alert.alert('Success', `Updated with ${normalized.length} tasks!`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update widget');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    initializeWidgetData();
+  }, []);
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Calendar Widget App</Text>
+      <Text style={styles.subtitle}>
+        {Platform.OS === 'android'
+          ? 'Home screen par long press karein aur Widgets me Month Calendar choose karein.'
+          : 'Widgets functionality is only supported on Android native devices.'}
+      </Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      {taskCount > 0 && (
+        <Text style={styles.badge}>
+          Synced Tasks: <Text style={styles.bold}>{taskCount}</Text>
+        </Text>
+      )}
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={fetchAndSyncWidget}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#ffffff" size="small" />
+        ) : (
+          <Text style={styles.buttonText}>Force Update Widget</Text>
+        )}
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
+    backgroundColor: '#f8fafc',
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    padding: 24,
   },
   title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748b',
     textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
   },
-  code: {
-    textTransform: 'uppercase',
+  badge: {
+    fontSize: 13,
+    color: '#2563eb',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 20,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  bold: { fontWeight: '700' },
+  button: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 180,
+    alignItems: 'center',
   },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: '#ffffff', fontWeight: '600', fontSize: 15 },
 });
